@@ -1,6 +1,8 @@
 import time
 import RPi.GPIO as GPIO
 import sys
+import Queue
+import threading
 from twython import TwythonStreamer
 
 # Search Terms
@@ -14,15 +16,40 @@ CONSUMER_SECRET = 'hwFEiykTGIab7j4Wox1b1cW8NtdB9J4IJHnn69HbEKOOdSVorY'
 ACCESS_TOKEN = '47125686-HjSO8eykmh0V7s7p6tz80ZhnBxTiqtsxQ76CvecEQ'
 ACCESS_TOKEN_SECRET = 'BiQgWbLeiuAqSZryRyTKKlASmMxsfp4XOdL0yIyiohfPZ'
 
+q = Queue.Queue()
+counting = threading.Lock()
+counter = 0
+
+def blink(text):
+	global counter
+	print text.encode('utf-8')
+	print
+	counting.acquire(True)
+	counter += 1
+	counting.release()
+	GPIO.output(LED, GPIO.HIGH)
+	time.sleep(2.5)
+	counting.acquire(True)
+	counter -= 1
+	counting.release()
+	if counter == 0:
+		GPIO.output(LED, GPIO.LOW)
+
+def work():
+	text = q.get()
+	if(len(text)):
+		blink(text)
+		q.task_done()
+
+
 # Callback for Twython Streamer
 class TwitMonStreamer(TwythonStreamer):
 	def on_success(self, data):
 		if 'text' in data:
-			print data['text'].encode('utf-8')
-			print
-			GPIO.output(LED, GPIO.HIGH)
-			time.sleep(0.5)
-			GPIO.output(LED, GPIO.LOW)
+			q.put(data['text'])
+			t = threading.Thread(target=work)
+			t.daemon = True
+			t.start()
 
 # Setup GPIO as output
 GPIO.setmode(GPIO.BOARD)
